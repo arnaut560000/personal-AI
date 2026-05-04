@@ -6,11 +6,13 @@ import os
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_DIR / "data"
+IS_VERCEL = bool(os.getenv("VERCEL"))
+RUNTIME_DIR = Path(os.getenv("ROOMAI_RUNTIME_DIR", "/tmp/roomai" if IS_VERCEL else str(PROJECT_DIR)))
+DATA_DIR = RUNTIME_DIR / "data"
 STATIC_DIR = PROJECT_DIR / "static"
 TEMPLATES_DIR = PROJECT_DIR / "templates"
-VENDOR_DIR = PROJECT_DIR / ".vendor"
-ENV_PATH = PROJECT_DIR / ".env"
+VENDOR_DIR = RUNTIME_DIR / ".vendor"
+ENV_PATH = RUNTIME_DIR / ".env"
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3:latest"
