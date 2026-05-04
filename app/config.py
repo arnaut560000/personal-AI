@@ -133,7 +133,7 @@ class AppConfig:
 
 
 def ensure_directories() -> None:
-    for path in (DATA_DIR, STATIC_DIR, TEMPLATES_DIR, VENDOR_DIR):
+    for path in (DATA_DIR, VENDOR_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 
