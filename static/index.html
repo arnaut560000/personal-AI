@@ -1,0 +1,1100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoomAI Face Interface</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --bg-deep: #030711;
+      --panel: rgba(10, 20, 36, 0.82);
+      --panel-strong: rgba(13, 27, 48, 0.96);
+      --panel-soft: rgba(18, 35, 60, 0.68);
+      --border: rgba(129, 190, 255, 0.2);
+      --text: #eff6ff;
+      --muted: #93aac8;
+      --accent: #79d8ff;
+      --accent-strong: #3dc0ff;
+      --accent-soft: rgba(121, 216, 255, 0.18);
+      --user: rgba(116, 179, 255, 0.16);
+      --assistant: rgba(124, 255, 214, 0.14);
+      --danger: #ff7f96;
+      --success: #7fffd4;
+      --dock-shadow: 0 -12px 40px rgba(0, 0, 0, 0.34);
+      --face-size: min(58vw, 400px);
+      --face-glow: rgba(121, 216, 255, 0.32);
+      --state-glow: rgba(121, 216, 255, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(57, 125, 208, 0.22), transparent 28%),
+        radial-gradient(circle at 20% 20%, rgba(74, 230, 204, 0.12), transparent 30%),
+        radial-gradient(circle at 80% 0%, rgba(78, 133, 255, 0.14), transparent 24%),
+        linear-gradient(180deg, #091426 0%, var(--bg) 38%, var(--bg-deep) 100%);
+      color: var(--text);
+    }
+
+    body {
+      overflow-x: hidden;
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: 16px 16px 22px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .screen {
+      width: min(100%, 940px);
+      min-height: calc(100vh - 38px);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 16px;
+      position: relative;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 4px 2px 0;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .brand-mark {
+      font-size: 0.78rem;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .brand-title {
+      font-size: 1rem;
+      color: var(--muted);
+    }
+
+    .state-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(4, 12, 24, 0.6);
+      backdrop-filter: blur(12px);
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .state-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 14px var(--state-glow);
+      animation: dotPulse 2.4s ease-in-out infinite;
+    }
+
+    .experience {
+      display: grid;
+      align-items: center;
+      justify-items: center;
+      gap: 16px;
+      position: relative;
+      min-height: 0;
+    }
+
+    .halo-field {
+      position: absolute;
+      inset: 8% 8% 18%;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 48%, rgba(90, 201, 255, 0.1), transparent 30%),
+        radial-gradient(circle at 50% 50%, rgba(36, 98, 193, 0.1), transparent 46%);
+      filter: blur(24px);
+      opacity: 0.9;
+    }
+
+    .face-stage {
+      position: relative;
+      width: min(100%, 620px);
+      display: grid;
+      justify-items: center;
+      align-items: center;
+      gap: 18px;
+      padding: 8px 0;
+    }
+
+    .avatar-wrap {
+      position: relative;
+      width: var(--face-size);
+      aspect-ratio: 1 / 0.88;
+      display: grid;
+      place-items: center;
+      filter: drop-shadow(0 20px 40px rgba(58, 159, 255, 0.18));
+      animation: bodyHover 5.5s ease-in-out infinite;
+    }
+
+    .orbital-ring,
+    .orbital-ring::before,
+    .orbital-ring::after {
+      position: absolute;
+      content: "";
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .orbital-ring {
+      inset: 8% 10%;
+      border: 1px solid rgba(125, 211, 252, 0.12);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 0 45px rgba(61, 169, 255, 0.12);
+      animation: ringFloat 8s ease-in-out infinite;
+    }
+
+    .orbital-ring::before {
+      inset: -7%;
+      border: 1px dashed rgba(121, 216, 255, 0.12);
+      animation: ringSpin 22s linear infinite;
+    }
+
+    .orbital-ring::after {
+      inset: 10%;
+      border: 1px solid rgba(170, 255, 224, 0.12);
+      animation: ringSpinReverse 26s linear infinite;
+    }
+
+    .face-core {
+      position: relative;
+      width: 74%;
+      aspect-ratio: 1 / 0.82;
+      border-radius: 42% 42% 38% 38% / 48% 48% 34% 34%;
+      background:
+        radial-gradient(circle at 72% 18%, rgba(242, 255, 247, 0.9), transparent 20%),
+        radial-gradient(circle at 28% 78%, rgba(255, 194, 214, 0.36), transparent 22%),
+        radial-gradient(circle at 68% 82%, rgba(253, 232, 187, 0.28), transparent 24%),
+        linear-gradient(180deg, #86f3ef 0%, #48e4d8 38%, #74f0ba 100%);
+      border: 1px solid rgba(221, 255, 247, 0.4);
+      box-shadow:
+        0 0 60px var(--face-glow),
+        inset 0 3px 8px rgba(255, 255, 255, 0.38),
+        inset 0 -16px 26px rgba(0, 86, 89, 0.18),
+        0 18px 30px rgba(0, 0, 0, 0.24);
+      display: grid;
+      place-items: center;
+      overflow: visible;
+    }
+
+    .face-core::before {
+      content: "";
+      position: absolute;
+      inset: 12% 13% 15%;
+      border-radius: 39% 39% 35% 35% / 48% 48% 38% 38%;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(118, 196, 255, 0.3), transparent 18%),
+        linear-gradient(180deg, rgba(30, 59, 109, 0.96), rgba(8, 17, 39, 0.98));
+      box-shadow:
+        inset 0 0 22px rgba(140, 200, 255, 0.24),
+        inset 0 -12px 20px rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(121, 216, 255, 0.16);
+    }
+
+    .face-core::after {
+      content: "";
+      position: absolute;
+      inset: 6% 10% auto auto;
+      width: 24%;
+      height: 18%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.72), transparent 72%);
+      filter: blur(7px);
+      opacity: 0.8;
+    }
+
+    .antenna,
+    .ear {
+      position: absolute;
+      background: linear-gradient(180deg, #92fff4 0%, #4ee8da 52%, #89f5bb 100%);
+      box-shadow:
+        inset 0 2px 4px rgba(255, 255, 255, 0.34),
+        inset 0 -8px 12px rgba(0, 89, 86, 0.16);
+    }
+
+    .antenna {
+      top: 8%;
+      width: 4%;
+      height: 23%;
+      border-radius: 999px;
+      z-index: -1;
+    }
+
+    .antenna::after {
+      content: "";
+      position: absolute;
+      top: -9%;
+      left: 50%;
+      width: 122%;
+      aspect-ratio: 1;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: inherit;
+      box-shadow: inherit;
+    }
+
+    .antenna.left {
+      left: 18%;
+      transform: rotate(-10deg);
+    }
+
+    .antenna.right {
+      right: 18%;
+      transform: rotate(10deg);
+    }
+
+    .ear {
+      top: 34%;
+      width: 10%;
+      height: 24%;
+      border-radius: 48%;
+      z-index: -1;
+    }
+
+    .ear.left {
+      left: 7%;
+    }
+
+    .ear.right {
+      right: 7%;
+    }
+
+    .eyes {
+      position: absolute;
+      top: 40%;
+      width: 43%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 2;
+    }
+
+    .eye {
+      position: relative;
+      width: 27%;
+      aspect-ratio: 0.8;
+      border-radius: 48% 48% 46% 46% / 52% 52% 44% 44%;
+      background: rgba(93, 68, 255, 0.18);
+      border: 1px solid rgba(208, 190, 255, 0.24);
+      overflow: hidden;
+      box-shadow:
+        0 0 24px rgba(176, 160, 255, 0.28),
+        inset 0 0 10px rgba(255, 255, 255, 0.2);
+      transform-origin: center center;
+    }
+
+    .eye::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at 50% 42%, rgba(245, 240, 255, 0.98), rgba(210, 196, 255, 0.94) 58%, rgba(162, 122, 255, 0.8) 100%);
+      box-shadow: 0 0 18px rgba(202, 178, 255, 0.92);
+      transform-origin: center;
+      animation: blink 7s infinite;
+    }
+
+    .eye::after {
+      content: "";
+      position: absolute;
+      inset: 14% 18% 48% 18%;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.65), transparent);
+      opacity: 0.48;
+    }
+
+    .response-panel {
+      width: min(100%, 540px);
+      padding: 16px 18px;
+      border-radius: 22px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(8, 17, 31, 0.82), rgba(7, 14, 26, 0.58));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(14px);
+    }
+
+    .response-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .response-head h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .response-subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .response-body {
+      color: #f7fbff;
+      font-size: 1rem;
+      line-height: 1.5;
+      min-height: 52px;
+      white-space: pre-wrap;
+    }
+
+    .transcript-wrap {
+      width: min(100%, 620px);
+      display: grid;
+      gap: 10px;
+      justify-items: stretch;
+    }
+
+    .transcript-toggle {
+      justify-self: center;
+      border: 1px solid rgba(121, 216, 255, 0.18);
+      background: rgba(6, 16, 28, 0.68);
+      color: var(--muted);
+      padding: 10px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .chat-log {
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height 240ms ease, opacity 180ms ease;
+      display: grid;
+      gap: 10px;
+    }
+
+    .chat-log.open {
+      max-height: 240px;
+      opacity: 1;
+      overflow-y: auto;
+      padding: 4px 4px 2px;
+    }
+
+    .bubble {
+      padding: 12px 14px;
+      border-radius: 18px;
+      line-height: 1.42;
+      white-space: pre-wrap;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.01);
+    }
+
+    .bubble.user {
+      justify-self: end;
+      max-width: 82%;
+      background: var(--user);
+    }
+
+    .bubble.assistant {
+      justify-self: start;
+      max-width: 88%;
+      background: var(--assistant);
+    }
+
+    .dock {
+      position: sticky;
+      bottom: 0;
+      padding: 14px;
+      border-radius: 28px;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(12, 24, 43, 0.9), rgba(7, 15, 28, 0.97));
+      box-shadow: var(--dock-shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .status-line {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 10px;
+      padding: 0 2px;
+    }
+
+    .status-line.error {
+      color: var(--danger);
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .message-input {
+      width: 100%;
+      min-height: 54px;
+      border: 1px solid rgba(121, 216, 255, 0.18);
+      background: rgba(4, 10, 19, 0.88);
+      color: var(--text);
+      border-radius: 18px;
+      padding: 15px 16px;
+      font-size: 1rem;
+      outline: none;
+      box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.2);
+    }
+
+    .message-input:focus {
+      border-color: rgba(121, 216, 255, 0.48);
+      box-shadow:
+        0 0 0 3px rgba(121, 216, 255, 0.14),
+        inset 0 0 22px rgba(0, 0, 0, 0.2);
+    }
+
+    .control-button {
+      min-width: 56px;
+      min-height: 54px;
+      border: 1px solid rgba(121, 216, 255, 0.16);
+      border-radius: 18px;
+      background: rgba(14, 31, 54, 0.96);
+      color: var(--text);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+
+    .control-button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(121, 216, 255, 0.32);
+      background: rgba(18, 39, 67, 1);
+    }
+
+    .control-button.primary {
+      min-width: 88px;
+      background: linear-gradient(180deg, rgba(66, 181, 255, 0.96), rgba(28, 125, 210, 0.96));
+      color: #03111d;
+      border-color: rgba(147, 226, 255, 0.28);
+      font-weight: 600;
+    }
+
+    .control-button.recording {
+      background: linear-gradient(180deg, rgba(255, 122, 146, 0.95), rgba(212, 58, 104, 0.95));
+      border-color: rgba(255, 160, 182, 0.44);
+      color: white;
+    }
+
+    .options {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .checkbox input {
+      accent-color: var(--accent-strong);
+      width: 16px;
+      height: 16px;
+    }
+
+    .hint {
+      color: var(--muted);
+      opacity: 0.92;
+    }
+
+    body[data-state="idle"] {
+      --state-glow: rgba(121, 216, 255, 0.45);
+      --face-glow: rgba(121, 216, 255, 0.22);
+    }
+
+    body[data-state="listening"] {
+      --state-glow: rgba(117, 255, 210, 0.72);
+      --face-glow: rgba(117, 255, 210, 0.3);
+    }
+
+    body[data-state="thinking"] {
+      --state-glow: rgba(255, 215, 122, 0.68);
+      --face-glow: rgba(255, 215, 122, 0.24);
+    }
+
+    body[data-state="speaking"] {
+      --state-glow: rgba(184, 152, 255, 0.82);
+      --face-glow: rgba(184, 152, 255, 0.34);
+    }
+
+    body[data-state="listening"] .avatar-wrap,
+    body[data-state="speaking"] .avatar-wrap {
+      animation-duration: 3.3s;
+    }
+
+    body[data-state="listening"] .face-core {
+      transform: scale(1.02);
+      box-shadow:
+        0 0 74px rgba(117, 255, 210, 0.26),
+        inset 0 3px 8px rgba(255, 255, 255, 0.38),
+        inset 0 -16px 26px rgba(0, 86, 89, 0.18),
+        0 18px 30px rgba(0, 0, 0, 0.24);
+    }
+
+    body[data-state="thinking"] .orbital-ring::before {
+      animation-duration: 8s;
+      border-color: rgba(255, 215, 122, 0.22);
+    }
+
+    body[data-state="speaking"] .eye::before {
+      animation-duration: 6s;
+    }
+
+    body[data-state="speaking"] .face-core::before {
+      box-shadow:
+        inset 0 0 24px rgba(178, 146, 255, 0.34),
+        inset 0 -12px 20px rgba(0, 0, 0, 0.28);
+    }
+
+    @keyframes blink {
+      0%, 44%, 48%, 100% { transform: scaleY(1); }
+      45%, 47% { transform: scaleY(0.12); }
+    }
+
+    @keyframes bodyHover {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    @keyframes ringFloat {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-10px) scale(1.015); }
+    }
+
+    @keyframes ringSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes ringSpinReverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+
+    @keyframes dotPulse {
+      0%, 100% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+
+    @media (max-width: 700px) {
+      :root {
+        --face-size: min(78vw, 360px);
+      }
+
+      .shell {
+        padding: 10px 10px 14px;
+      }
+
+      .screen {
+        min-height: calc(100vh - 24px);
+        gap: 12px;
+      }
+
+      .topbar {
+        padding-top: 2px;
+      }
+
+      .brand-title {
+        font-size: 0.92rem;
+      }
+
+      .state-pill {
+        font-size: 0.84rem;
+        padding: 9px 12px;
+      }
+
+      .response-panel {
+        padding: 14px 14px 15px;
+      }
+
+      .response-body {
+        font-size: 0.97rem;
+      }
+
+      .dock {
+        padding: 12px;
+        border-radius: 24px;
+      }
+
+      .input-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .control-button.primary {
+        grid-column: 1 / -1;
+      }
+
+      .message-input {
+        min-height: 52px;
+      }
+
+      .options {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .response-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .transcript-toggle {
+        width: 100%;
+      }
+
+      .bubble.user,
+      .bubble.assistant {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body data-state="idle">
+  <main class="shell">
+    <section class="screen">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">RoomAI</div>
+          <div class="brand-title">Assistant interface</div>
+        </div>
+        <div class="state-pill" aria-live="polite">
+          <span class="state-dot"></span>
+          <span id="stateLabel">Idle and ready</span>
+        </div>
+      </header>
+
+      <section class="experience">
+        <div class="halo-field" aria-hidden="true"></div>
+
+        <div class="face-stage">
+          <div class="avatar-wrap" aria-hidden="true">
+            <div class="orbital-ring"></div>
+            <div class="antenna left"></div>
+            <div class="antenna right"></div>
+            <div class="ear left"></div>
+            <div class="ear right"></div>
+            <div class="face-core">
+              <div class="eyes">
+                <div class="eye left"></div>
+                <div class="eye right"></div>
+              </div>
+            </div>
+          </div>
+
+          <section class="response-panel" aria-live="polite">
+            <div class="response-head">
+              <h1 id="responseTitle">RoomAI</h1>
+              <div class="response-subtitle" id="responseSubtitle">Ready for your next message.</div>
+            </div>
+            <div class="response-body" id="responseBody">
+              RoomAI is ready. You can type a message or test voice input with the microphone button.
+            </div>
+          </section>
+        </div>
+
+        <section class="transcript-wrap">
+          <button id="transcriptToggle" class="transcript-toggle" type="button" aria-expanded="false">
+            Show conversation
+          </button>
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section class="dock">
+        <div id="status" class="status-line">Ready.</div>
+        <div class="input-row">
+          <input id="messageInput" class="message-input" type="text" placeholder="Talk to RoomAI..." autocomplete="off">
+          <button id="micButton" class="control-button" type="button" aria-label="Start microphone">Mic</button>
+          <button id="sendButton" class="control-button primary" type="button">Send</button>
+        </div>
+        <div class="options">
+          <label class="checkbox">
+            <input id="speakReplies" type="checkbox" checked>
+            <span>Speak assistant replies</span>
+          </label>
+          <div class="hint">Face reacts to listening, thinking, and speaking states.</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const chatLog = document.getElementById("chatLog");
+    const messageInput = document.getElementById("messageInput");
+    const sendButton = document.getElementById("sendButton");
+    const micButton = document.getElementById("micButton");
+    const speakReplies = document.getElementById("speakReplies");
+    const statusEl = document.getElementById("status");
+    const stateLabel = document.getElementById("stateLabel");
+    const responseTitle = document.getElementById("responseTitle");
+    const responseSubtitle = document.getElementById("responseSubtitle");
+    const responseBody = document.getElementById("responseBody");
+    const transcriptToggle = document.getElementById("transcriptToggle");
+
+    let mediaRecorder = null;
+    let mediaStream = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let currentState = "idle";
+    let locationSyncState = "idle";
+    let lastLocationSyncAt = 0;
+
+    const locationIntentPattern = /\b(my location|current location|where am i|where are we|where are you|restaurants near me|near me|nearby|closest|around me|in this area)\b/i;
+
+    const stateCopy = {
+      idle: {
+        label: "Idle and ready",
+        subtitle: "Ready for your next message."
+      },
+      listening: {
+        label: "Listening",
+        subtitle: "Microphone is active. Tap again to stop."
+      },
+      thinking: {
+        label: "Thinking",
+        subtitle: "Processing your message."
+      },
+      speaking: {
+        label: "Speaking",
+        subtitle: "Reply is being spoken aloud."
+      }
+    };
+
+    function setFaceState(state) {
+      currentState = state;
+      document.body.dataset.state = state;
+      stateLabel.textContent = stateCopy[state].label;
+      responseSubtitle.textContent = stateCopy[state].subtitle;
+    }
+
+    function addBubble(role, text) {
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
+      chatLog.appendChild(bubble);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    function setResponse(role, text) {
+      responseTitle.textContent = role === "user" ? "You" : "RoomAI";
+      responseBody.textContent = text;
+    }
+
+    function messageNeedsPreciseLocation(text) {
+      return locationIntentPattern.test(text);
+    }
+
+    async function syncBrowserLocation({ force = false } = {}) {
+      const now = Date.now();
+      if (!force && locationSyncState === "ready" && (now - lastLocationSyncAt) < 120000) {
+        return true;
+      }
+      if (!navigator.geolocation) {
+        setStatus("This browser does not support GPS location. RoomAI will use approximate internet location.");
+        locationSyncState = "unsupported";
+        return false;
+      }
+
+      setStatus("Requesting precise device location...");
+
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 30000
+          }
+        );
+      });
+
+      const response = await fetch("/location/client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not save GPS location.");
+      }
+
+      locationSyncState = "ready";
+      lastLocationSyncAt = now;
+      const locationLabel = data.location?.label || data.location?.area_label || "current device location";
+      setStatus(`Precise location synced: ${locationLabel}`);
+      return true;
+    }
+
+    function openTranscriptIfNeeded() {
+      if (!chatLog.classList.contains("open")) {
+        chatLog.classList.add("open");
+        transcriptToggle.setAttribute("aria-expanded", "true");
+        transcriptToggle.textContent = "Hide conversation";
+      }
+    }
+
+    function speakReply(text) {
+      if (!speakReplies.checked || !("speechSynthesis" in window)) {
+        setFaceState("idle");
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.onstart = () => {
+        setFaceState("speaking");
+        setStatus("Speaking reply...");
+      };
+      utterance.onend = () => {
+        if (!isRecording) {
+          setFaceState("idle");
+          setStatus("Reply received.");
+        }
+      };
+      utterance.onerror = () => {
+        if (!isRecording) {
+          setFaceState("idle");
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    }
+
+    async function sendChat(text, options = {}) {
+      const { appendUserBubble = true } = options;
+
+      if (messageNeedsPreciseLocation(text)) {
+        try {
+          await syncBrowserLocation({ force: true });
+        } catch (error) {
+          locationSyncState = "failed";
+          setStatus(`${error.message} RoomAI will fall back to approximate internet location.`, true);
+        }
+      }
+
+      if (appendUserBubble) {
+        addBubble("user", text);
+      }
+      setResponse("user", text);
+      setFaceState("thinking");
+      setStatus("Waiting for RoomAI...");
+
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          session_id: "browser-test"
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || "Chat request failed.");
+      }
+
+      addBubble("assistant", data.answer);
+      setResponse("assistant", data.answer);
+      setStatus(data.success === false ? "Reply returned with fallback mode." : "Reply received.");
+      openTranscriptIfNeeded();
+      speakReply(data.answer);
+
+      if (!speakReplies.checked || !("speechSynthesis" in window)) {
+        setFaceState("idle");
+      }
+    }
+
+    async function sendTextMessage() {
+      const text = messageInput.value.trim();
+      if (!text) {
+        return;
+      }
+
+      messageInput.value = "";
+      window.speechSynthesis?.cancel();
+
+      try {
+        await sendChat(text);
+      } catch (error) {
+        setFaceState("idle");
+        setStatus(error.message, true);
+      }
+    }
+
+    async function transcribeAndSend(audioBlob) {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "browser-recording.webm");
+      setFaceState("thinking");
+      setStatus("Uploading audio for transcription...");
+
+      const response = await fetch("/voice/transcribe", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || "Voice transcription failed.");
+      }
+
+      if (!data.transcript) {
+        throw new Error("No transcript was returned.");
+      }
+
+      setStatus(`Transcript: ${data.transcript}`);
+      setResponse("user", data.transcript);
+      addBubble("user", data.transcript);
+      await sendChat(data.transcript, { appendUserBubble: false });
+    }
+
+    async function startRecording() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("This browser does not support microphone capture.");
+      }
+
+      window.speechSynthesis?.cancel();
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunks = [];
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "";
+
+      mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blobType = recordedChunks[0]?.type || "audio/webm";
+        const audioBlob = new Blob(recordedChunks, { type: blobType });
+        mediaStream.getTracks().forEach((track) => track.stop());
+        mediaStream = null;
+        recordedChunks = [];
+
+        try {
+          await transcribeAndSend(audioBlob);
+        } catch (error) {
+          setFaceState("idle");
+          setStatus(error.message, true);
+        }
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      micButton.textContent = "Stop";
+      micButton.classList.add("recording");
+      setFaceState("listening");
+      setStatus("Recording... tap again to stop.");
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+      }
+      isRecording = false;
+      micButton.textContent = "Mic";
+      micButton.classList.remove("recording");
+    }
+
+    sendButton.addEventListener("click", () => {
+      void sendTextMessage();
+    });
+
+    messageInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void sendTextMessage();
+      }
+    });
+
+    micButton.addEventListener("click", async () => {
+      try {
+        if (isRecording) {
+          stopRecording();
+        } else {
+          await startRecording();
+        }
+      } catch (error) {
+        setStatus(error.message, true);
+        setFaceState("idle");
+        stopRecording();
+      }
+    });
+
+    transcriptToggle.addEventListener("click", () => {
+      const isOpen = chatLog.classList.toggle("open");
+      transcriptToggle.setAttribute("aria-expanded", String(isOpen));
+      transcriptToggle.textContent = isOpen ? "Hide conversation" : "Show conversation";
+    });
+
+    addBubble("assistant", "RoomAI is ready. You can type a message or test voice input with the microphone button.");
+    setFaceState("idle");
+
+    if (navigator.geolocation) {
+      navigator.permissions?.query?.({ name: "geolocation" }).then((result) => {
+        if (result.state === "granted") {
+          void syncBrowserLocation().catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  </script>
+</body>
+</html>

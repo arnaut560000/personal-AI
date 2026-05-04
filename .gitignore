@@ -1,0 +1,38 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local dependency/vendor folders
+.vendor/
+.vendor_web/
+vendor_lib/
+
+# Runtime data, logs, and generated local state
+*.log
+*.db
+*.sqlite
+*.sqlite3
+roomai_location_cache.json
+data/*.log
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*cache*.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
