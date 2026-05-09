@@ -63,6 +63,11 @@ class OllamaClient:
                 "model": self.config.ollama_model,
                 "stream": self.config.ollama_stream,
                 "messages": messages,
+                "options": {
+                    "num_ctx": self.config.ollama_num_ctx,
+                    "num_predict": self.config.ollama_num_predict,
+                    "num_gpu": self.config.ollama_num_gpu,
+                },
             }
         ).encode("utf-8")
         http_request = request.Request(

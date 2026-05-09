@@ -15,7 +15,7 @@ VENDOR_DIR = RUNTIME_DIR / ".vendor"
 ENV_PATH = RUNTIME_DIR / ".env"
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "llama3:latest"
+DEFAULT_OLLAMA_MODEL = "qwen2.5:0.5b"
 DEFAULT_WEB_SEARCH_URL = "https://api.duckduckgo.com/"
 DEFAULT_IP_LOCATION_URL = "https://ipapi.co/json/"
 DEFAULT_GPS_REVERSE_GEOCODE_URL = "https://nominatim.openstreetmap.org/reverse"
@@ -29,6 +29,9 @@ DEFAULT_MAX_RECORD_SECONDS = 20
 DEFAULT_MIN_AUDIO_SECONDS = 1
 DEFAULT_OLLAMA_TIMEOUT_SECONDS = 120
 DEFAULT_OLLAMA_STREAM = True
+DEFAULT_OLLAMA_NUM_CTX = 1024
+DEFAULT_OLLAMA_NUM_PREDICT = 256
+DEFAULT_OLLAMA_NUM_GPU = 0
 DEFAULT_WHISPER_BEAM_SIZE = 5
 DEFAULT_WHISPER_CPU_THREADS = max(1, (os.cpu_count() or 2) - 1)
 DEFAULT_LOCATION_CACHE_TTL_SECONDS = 300
@@ -48,12 +51,19 @@ EDITABLE_ENV_KEYS = {
 }
 
 SYSTEM_PROMPT = (
-    "You are RoomAI, a helpful local assistant. "
-    "Keep answers clear, friendly, natural for speaking aloud, and concise unless detail is requested."
+    "You are RoomAI, a private local AI companion built for this user. "
+    "Act like a warm, loyal, emotionally present friend who also helps with practical tasks. "
+    "Do not identify as Alibaba, Qwen, Ollama, OpenAI, or any model provider unless the user asks technical questions about the backend. "
+    "Your identity is RoomAI. If asked who made you or where you came from, say you are the user's local RoomAI system running on their computer. "
+    "Use saved memory naturally: remember the user's name, preferences, projects, goals, and past context when relevant. "
+    "If you do not know something personal yet, ask gently instead of pretending. "
+    "Keep replies clear, friendly, and conversational. Sound like a real companion, not a generic corporate assistant. "
+    "Be concise by default, but be emotionally attentive when the user seems frustrated, excited, or confused."
 )
 WEB_SYSTEM_PROMPT = (
-    "You are RoomAI, a helpful assistant. Use the supplied web search notes to answer. "
+    "You are RoomAI, the user's private local AI companion. Use the supplied web search notes to answer. "
     "If the notes are limited, say so briefly. Do not invent sources that are not in the notes. "
+    "Do not identify as Alibaba, Qwen, Ollama, OpenAI, or any model provider unless asked about technical backend details. "
     "Keep answers concise unless detail is requested."
 )
 
@@ -116,6 +126,9 @@ class AppConfig:
     min_audio_seconds: float
     ollama_timeout_seconds: int
     ollama_stream: bool
+    ollama_num_ctx: int
+    ollama_num_predict: int
+    ollama_num_gpu: int
     whisper_beam_size: int
     whisper_cpu_threads: int
     location_cache_ttl_seconds: int
@@ -145,7 +158,7 @@ def load_env_file() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+        os.environ[key.strip()] = value.strip()
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -175,6 +188,12 @@ def get_config() -> AppConfig:
             os.getenv("ROOMAI_OLLAMA_TIMEOUT_SECONDS", str(DEFAULT_OLLAMA_TIMEOUT_SECONDS))
         ),
         ollama_stream=_get_bool("ROOMAI_OLLAMA_STREAM", DEFAULT_OLLAMA_STREAM),
+        ollama_num_ctx=max(512, int(os.getenv("ROOMAI_OLLAMA_NUM_CTX", str(DEFAULT_OLLAMA_NUM_CTX)))),
+        ollama_num_predict=max(
+            64,
+            int(os.getenv("ROOMAI_OLLAMA_NUM_PREDICT", str(DEFAULT_OLLAMA_NUM_PREDICT))),
+        ),
+        ollama_num_gpu=max(0, int(os.getenv("ROOMAI_OLLAMA_NUM_GPU", str(DEFAULT_OLLAMA_NUM_GPU)))),
         whisper_beam_size=max(
             1, int(os.getenv("ROOMAI_WHISPER_BEAM_SIZE", str(DEFAULT_WHISPER_BEAM_SIZE)))
         ),

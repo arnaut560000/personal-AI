@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.config import (
@@ -88,13 +89,125 @@ class AIService:
             {
                 "role": "system",
                 "content": (
-                    "Local user memory context from past sessions:\n"
+                    "RoomAI long-term memory about the user:\n"
                     f"{memory_context}\n"
-                    "Use this context only when relevant. If uncertain, ask for confirmation."
+                    "Use this context naturally when relevant. Never expose it as a database dump unless asked. "
+                    "If uncertain, ask the user warmly instead of guessing."
                 ),
             },
             *history.to_messages(),
         ]
+
+    def _capture_personal_memory(self, text: str) -> None:
+        patterns = (
+            (r"^call me\s+(.+)$", "preferred_name"),
+            (r"^my name is\s+(.+)$", "name"),
+            (r"^i am\s+(.+)$", "identity"),
+            (r"^i'm\s+(.+)$", "identity"),
+            (r"^i like\s+(.+)$", "likes"),
+            (r"^i love\s+(.+)$", "likes"),
+            (r"^i prefer\s+(.+)$", "preferences"),
+            (r"^my favorite\s+(.+?)\s+is\s+(.+)$", "favorite:{first}"),
+            (r"^i want to\s+(.+)$", "goals"),
+            (r"^i am working on\s+(.+)$", "current_project"),
+            (r"^i'm working on\s+(.+)$", "current_project"),
+        )
+        clean = text.strip().strip(".!?")
+        lowered = clean.lower()
+        for pattern, key_template in patterns:
+            match = re.match(pattern, clean, flags=re.IGNORECASE)
+            if not match:
+                continue
+            if "{first}" in key_template:
+                key = key_template.format(first=match.group(1).strip().lower())
+                value = match.group(2).strip()
+            else:
+                key = key_template
+                value = match.group(1).strip()
+            if value and len(value) <= 160 and not lowered.startswith(("i am not ", "i'm not ")):
+                self.memory_service.set_fact(key, value)
+            return
+
+    def _personal_snapshot(self) -> dict[str, str]:
+        return {key: value for key, value in self.memory_service.all_facts()}
+
+    def _build_self_identity_answer(self) -> str:
+        return (
+            "I'm RoomAI. Not Alibaba, not Qwen, not a cloud character. "
+            "I'm your local AI companion running on your computer. "
+            "My job is to know you over time, remember what matters to you, and help you build things without feeling like you're talking to a generic assistant."
+        )
+
+    def _build_user_identity_answer(self) -> str:
+        memory = self._personal_snapshot()
+        name = memory.get("preferred_name") or memory.get("name")
+        identity = memory.get("identity")
+        project = memory.get("current_project")
+        goals = memory.get("goals")
+        likes = memory.get("likes")
+        preferences = memory.get("preferences")
+
+        if not any((name, identity, project, goals, likes, preferences)):
+            return (
+                "I don't know you deeply enough yet, and I don't want to fake it. "
+                "What I do know is this: you're building RoomAI into a personal companion, not a generic chatbot. "
+                "Tell me things like your name, what you're working on, what you care about, and how you want me to support you, and I'll remember them."
+            )
+
+        lines: list[str] = []
+        if name:
+            lines.append(f"You are {name}.")
+        if identity:
+            lines.append(f"You told me you're {identity}.")
+        if project:
+            lines.append(f"Right now, you're working on {project}.")
+        if goals:
+            lines.append(f"One thing you want is to {goals}.")
+        if likes:
+            lines.append(f"You like {likes}.")
+        if preferences:
+            lines.append(f"You prefer {preferences}.")
+
+        lines.append(
+            "And from how you've been guiding this project, I can tell you don't want a tool that just answers questions. "
+            "You want something that feels present, remembers you, and grows with you."
+        )
+        return " ".join(lines)
+
+    def _build_future_answer(self) -> str:
+        memory = self._personal_snapshot()
+        project = memory.get("current_project") or "RoomAI"
+        goals = memory.get("goals")
+        name = memory.get("preferred_name") or memory.get("name") or "you"
+
+        if goals:
+            return (
+                f"What we'll do in the future is build around you, {name}. "
+                f"We'll keep improving {project}, and I'll remember that you want to {goals}. "
+                "The direction is clear: make me less like a chatbot and more like a companion that knows your projects, your habits, your preferences, and the way you like to think."
+            )
+
+        return (
+            f"What we'll do in the future is keep shaping {project} into your personal companion system. "
+            "First, I learn who you are. Then I remember your projects, preferences, and routines. "
+            "After that, I help you plan, build, decide, and keep track of your life in a way that feels personal instead of robotic."
+        )
+
+    def _personal_companion_response(self, text: str) -> str | None:
+        lowered = text.lower().strip()
+        asks_self = re.search(r"\b(who are you|what are you|where did you come from|who made you)\b", lowered)
+        asks_user = re.search(r"\b(who am i|who i am|what do you know about me|tell me about me|do you know me)\b", lowered)
+        asks_future = re.search(r"\b(future|what will we do|what we will do|where are we going|our plan)\b", lowered)
+
+        if asks_user and asks_future:
+            return f"{self._build_user_identity_answer()}\n\n{self._build_future_answer()}"
+        if asks_user:
+            return self._build_user_identity_answer()
+        if asks_self:
+            return self._build_self_identity_answer()
+        if asks_future:
+            return self._build_future_answer()
+        return None
 
     def _graceful_chat_response(
         self,
@@ -123,6 +236,7 @@ class AIService:
         require_gps: bool = False,
     ) -> ChatResponse:
         clean_text = normalize_transcript(text)
+        self._capture_personal_memory(clean_text)
 
         command_result = self.command_service.process(clean_text)
         if command_result.handled:
@@ -135,6 +249,18 @@ class AIService:
                 model=self.model_name,
                 success=True,
                 metadata=command_result.metadata or {},
+            )
+
+        personal_answer = self._personal_companion_response(clean_text)
+        if personal_answer is not None:
+            self.memory_service.add_turn(session_id, clean_text, personal_answer)
+            return ChatResponse(
+                session_id=session_id,
+                answer=personal_answer,
+                handled_by="companion_memory",
+                model=self.model_name,
+                success=True,
+                metadata={"type": "personal_companion"},
             )
 
         try:
