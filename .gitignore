@@ -30,6 +30,10 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 data/*cache*.json
+data/voices/
+
+# Experimental/generated frontend workspace
+frontend/
 
 # OS/editor noise
 .DS_Store

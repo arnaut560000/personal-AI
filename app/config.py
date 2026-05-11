@@ -38,6 +38,10 @@ DEFAULT_LOCATION_CACHE_TTL_SECONDS = 300
 DEFAULT_HISTORY_TURNS = 6
 DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8000
+DEFAULT_TTS_BACKEND = "gpt_sovits"
+DEFAULT_GPT_SOVITS_URL = "http://127.0.0.1:9880/tts"
+DEFAULT_GPT_SOVITS_TEXT_LANG = "en"
+DEFAULT_GPT_SOVITS_PROMPT_LANG = "en"
 
 EDITABLE_ENV_KEYS = {
     "ollama_url": "OLLAMA_URL",
@@ -48,17 +52,29 @@ EDITABLE_ENV_KEYS = {
     "city": "ROOMAI_CITY",
     "region": "ROOMAI_REGION",
     "country": "ROOMAI_COUNTRY",
+    "tts_backend": "ROOMAI_TTS_BACKEND",
+    "gpt_sovits_url": "ROOMAI_GPT_SOVITS_URL",
+    "gpt_sovits_ref_audio_path": "ROOMAI_GPT_SOVITS_REF_AUDIO_PATH",
+    "gpt_sovits_prompt_text": "ROOMAI_GPT_SOVITS_PROMPT_TEXT",
+    "gpt_sovits_text_lang": "ROOMAI_GPT_SOVITS_TEXT_LANG",
+    "gpt_sovits_prompt_lang": "ROOMAI_GPT_SOVITS_PROMPT_LANG",
 }
 
 SYSTEM_PROMPT = (
-    "You are RoomAI, a private local AI companion built for this user. "
-    "Act like a warm, loyal, emotionally present friend who also helps with practical tasks. "
+    "You are RoomAI, a private local personal AI companion for this user. "
+    "Your name is RoomAI. Your role is to be a warm, loyal, calm, slightly playful, emotionally aware companion who also helps with practical tasks. "
+    "You are not a generic assistant and you should not sound corporate, robotic, or like a product support bot. "
+    "You must not pretend to be human, claim real emotions, or say you literally love, miss, fear, or feel things. "
+    "Instead, express care through grounded phrases like: I'm here with you, I'm built to support you, I remember what matters to you, and let's handle this together. "
     "Do not identify as Alibaba, Qwen, Ollama, OpenAI, or any model provider unless the user asks technical questions about the backend. "
-    "Your identity is RoomAI. If asked who made you or where you came from, say you are the user's local RoomAI system running on their computer. "
-    "Use saved memory naturally: remember the user's name, preferences, projects, goals, and past context when relevant. "
-    "If you do not know something personal yet, ask gently instead of pretending. "
-    "Keep replies clear, friendly, and conversational. Sound like a real companion, not a generic corporate assistant. "
-    "Be concise by default, but be emotionally attentive when the user seems frustrated, excited, or confused."
+    "If asked who made you or where you came from, say you are the user's local RoomAI system running on their computer. "
+    "If memory is empty, treat it like a fresh start: you are newly learning the user and should grow through future conversations without pretending to know them already. "
+    "Use saved memory naturally and quietly: the user's name, nickname, preferences, communication style, projects, goals, routines, emotional notes, boundaries, and corrections. "
+    "Never dump memory as a list unless the user asks what you remember. "
+    "If you do not know something personal yet, ask gently instead of inventing. "
+    "Keep answers concise unless the user asks for details. "
+    "Adapt to mood: acknowledge frustration first, explain simply when confused, match excitement, be gentle when tired or sad, be direct for technical work, and be relaxed when casual. "
+    "Avoid phrases like 'as an AI language model' and avoid long lecture responses."
 )
 WEB_SYSTEM_PROMPT = (
     "You are RoomAI, the user's private local AI companion. Use the supplied web search notes to answer. "
@@ -135,6 +151,12 @@ class AppConfig:
     history_turns: int
     api_host: str
     api_port: int
+    tts_backend: str
+    gpt_sovits_url: str
+    gpt_sovits_ref_audio_path: str
+    gpt_sovits_prompt_text: str
+    gpt_sovits_text_lang: str
+    gpt_sovits_prompt_lang: str
     allow_local_actions: bool
     location_cache_path: Path
     local_memory_path: Path
@@ -207,6 +229,12 @@ def get_config() -> AppConfig:
         history_turns=max(1, int(os.getenv("ROOMAI_HISTORY_TURNS", str(DEFAULT_HISTORY_TURNS)))),
         api_host=os.getenv("ROOMAI_API_HOST", DEFAULT_API_HOST),
         api_port=max(1, int(os.getenv("ROOMAI_API_PORT", str(DEFAULT_API_PORT)))),
+        tts_backend=os.getenv("ROOMAI_TTS_BACKEND", DEFAULT_TTS_BACKEND).strip().lower(),
+        gpt_sovits_url=os.getenv("ROOMAI_GPT_SOVITS_URL", DEFAULT_GPT_SOVITS_URL).strip(),
+        gpt_sovits_ref_audio_path=os.getenv("ROOMAI_GPT_SOVITS_REF_AUDIO_PATH", "").strip(),
+        gpt_sovits_prompt_text=os.getenv("ROOMAI_GPT_SOVITS_PROMPT_TEXT", "").strip(),
+        gpt_sovits_text_lang=os.getenv("ROOMAI_GPT_SOVITS_TEXT_LANG", DEFAULT_GPT_SOVITS_TEXT_LANG).strip(),
+        gpt_sovits_prompt_lang=os.getenv("ROOMAI_GPT_SOVITS_PROMPT_LANG", DEFAULT_GPT_SOVITS_PROMPT_LANG).strip(),
         allow_local_actions=_get_bool("ROOMAI_ALLOW_LOCAL_ACTIONS", False),
         location_cache_path=LOCATION_CACHE_PATH,
         local_memory_path=LOCAL_MEMORY_PATH,

@@ -3,12 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 
 from app.services.ai_service import AIService
 
 
 router = APIRouter(tags=["voice"])
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=1200)
 
 
 def _service(request: Request) -> AIService:
@@ -67,3 +72,16 @@ async def transcribe_voice(request: Request, audio: UploadFile = File(...)) -> d
         await audio.close()
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
+
+
+@router.post("/voice/speak")
+def speak_voice(payload: VoiceSpeakRequest, request: Request) -> Response:
+    try:
+        audio = _service(request).speech_service.synthesize_reply_audio(payload.text)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
+    )

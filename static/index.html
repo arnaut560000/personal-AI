@@ -1058,6 +1058,15 @@
     let currentState = "idle";
     let locationSyncState = "idle";
     let lastLocationSyncAt = 0;
+    let currentReplyAudioUrl = null;
+    let replyAudioPrimed = false;
+    let speechQueue = [];
+    let speechQueueActive = false;
+    let preferredBrowserVoice = null;
+    const replyAudio = new Audio();
+    replyAudio.preload = "auto";
+    replyAudio.playsInline = true;
+    const silentAudioDataUrl = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==";
 
     const locationIntentPattern = /\b(my location|current location|where am i|where are we|where are you|restaurants near me|near me|nearby|closest|around me|in this area)\b/i;
 
@@ -1094,6 +1103,7 @@
       bubble.textContent = text;
       chatLog.appendChild(bubble);
       chatLog.scrollTop = chatLog.scrollHeight;
+      return bubble;
     }
 
     function setStatus(message, isError = false) {
@@ -1166,32 +1176,219 @@
       }
     }
 
-    function speakReply(text) {
-      if (!speakReplies.checked || !("speechSynthesis" in window)) {
+    function stopReplyAudio() {
+      replyAudio.pause();
+      replyAudio.removeAttribute("src");
+      replyAudio.load();
+      if (currentReplyAudioUrl) {
+        URL.revokeObjectURL(currentReplyAudioUrl);
+        currentReplyAudioUrl = null;
+      }
+    }
+
+    function clearSpeechQueue() {
+      speechQueue = [];
+      speechQueueActive = false;
+      window.speechSynthesis?.cancel();
+      stopReplyAudio();
+    }
+
+    function primeReplyAudio() {
+      if (replyAudioPrimed) {
+        return;
+      }
+
+      const previousMuted = replyAudio.muted;
+      replyAudio.muted = true;
+      replyAudio.src = silentAudioDataUrl;
+      replyAudio.play()
+        .then(() => {
+          replyAudio.pause();
+          replyAudio.currentTime = 0;
+          replyAudio.removeAttribute("src");
+          replyAudio.load();
+          replyAudio.muted = previousMuted;
+          replyAudioPrimed = true;
+        })
+        .catch(() => {
+          replyAudio.muted = previousMuted;
+        });
+    }
+
+    function chooseBrowserVoice() {
+      if (!("speechSynthesis" in window)) {
+        return null;
+      }
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferredNames = [
+        "Microsoft Aria",
+        "Microsoft Jenny",
+        "Microsoft Zira",
+        "Google US English",
+        "Google UK English Female"
+      ];
+      preferredBrowserVoice =
+        preferredNames
+          .map((name) => voices.find((voice) => voice.name.includes(name)))
+          .find(Boolean)
+        || voices.find((voice) => /female|woman|girl|zira|jenny|aria/i.test(`${voice.name} ${voice.voiceURI}`))
+        || voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("en"))
+        || voices[0]
+        || null;
+      return preferredBrowserVoice;
+    }
+
+    if ("speechSynthesis" in window) {
+      chooseBrowserVoice();
+      window.speechSynthesis.onvoiceschanged = chooseBrowserVoice;
+    }
+
+    function speakWithBrowserVoice(text) {
+      if (!("speechSynthesis" in window)) {
+        setFaceState("idle");
+        setStatus("Voice playback is not available in this browser.", true);
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.voice = preferredBrowserVoice || chooseBrowserVoice();
+        utterance.rate = 0.94;
+        utterance.pitch = 1.18;
+        utterance.volume = 1;
+        utterance.onstart = () => {
+          setFaceState("speaking");
+          setStatus("Speaking reply...");
+        };
+        utterance.onend = () => {
+          if (!isRecording && speechQueue.length === 0) {
+            setFaceState("idle");
+            setStatus("Reply received.");
+          }
+          resolve();
+        };
+        utterance.onerror = () => {
+          if (!isRecording) {
+            setFaceState("idle");
+          }
+          resolve();
+        };
+        window.speechSynthesis.speak(utterance);
+      });
+    }
+
+    async function playReplyAudio(text) {
+      if (!speakReplies.checked) {
         setFaceState("idle");
         return;
       }
 
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.onstart = () => {
+      if ("speechSynthesis" in window) {
+        await speakWithBrowserVoice(text);
+        return;
+      }
+
+      window.speechSynthesis?.cancel();
+      stopReplyAudio();
+
+      try {
         setFaceState("speaking");
         setStatus("Speaking reply...");
-      };
-      utterance.onend = () => {
-        if (!isRecording) {
-          setFaceState("idle");
-          setStatus("Reply received.");
+        const response = await fetch("/voice/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        if (!response.ok) {
+          throw new Error("Backend voice unavailable.");
         }
-      };
-      utterance.onerror = () => {
-        if (!isRecording) {
-          setFaceState("idle");
+
+        const audioBlob = await response.blob();
+        currentReplyAudioUrl = URL.createObjectURL(audioBlob);
+        replyAudio.src = currentReplyAudioUrl;
+        replyAudio.muted = false;
+        replyAudio.volume = 1;
+        await new Promise((resolve, reject) => {
+          replyAudio.onended = () => {
+            stopReplyAudio();
+            if (!isRecording && speechQueue.length === 0) {
+              setFaceState("idle");
+              setStatus("Reply received.");
+            }
+            resolve();
+          };
+          replyAudio.onerror = () => {
+            stopReplyAudio();
+            reject(new Error("Generated voice playback failed."));
+          };
+          replyAudio.play().catch(reject);
+        });
+      } catch (error) {
+        console.warn("RoomAI voice playback failed.", error);
+        stopReplyAudio();
+        await speakWithBrowserVoice(text);
+      }
+    }
+
+    async function drainSpeechQueue() {
+      if (speechQueueActive) {
+        return;
+      }
+
+      speechQueueActive = true;
+      while (speechQueue.length > 0 && speakReplies.checked) {
+        const nextText = speechQueue.shift();
+        await playReplyAudio(nextText);
+      }
+      speechQueueActive = false;
+    }
+
+    function enqueueSpeech(text) {
+      const cleanText = text.trim();
+      if (!cleanText || !speakReplies.checked) {
+        return;
+      }
+      speechQueue.push(cleanText);
+      void drainSpeechQueue();
+    }
+
+    function extractSpeakableSegments(buffer, force = false) {
+      const segments = [];
+      let remaining = buffer;
+      const sentencePattern = /^([\s\S]*?[.!?])(\s+|$)/;
+
+      while (true) {
+        const match = remaining.match(sentencePattern);
+        if (!match) {
+          break;
         }
-      };
-      window.speechSynthesis.speak(utterance);
+        const segment = match[1].trim();
+        if (segment) {
+          segments.push(segment);
+        }
+        remaining = remaining.slice(match[0].length);
+      }
+
+      if (!force && segments.length === 0 && remaining.length > 180) {
+        const splitAt = Math.max(
+          remaining.lastIndexOf(",", 180),
+          remaining.lastIndexOf(";", 180),
+          remaining.lastIndexOf(" ", 180)
+        );
+        if (splitAt > 80) {
+          segments.push(remaining.slice(0, splitAt).trim());
+          remaining = remaining.slice(splitAt).trimStart();
+        }
+      }
+
+      if (force && remaining.trim()) {
+        segments.push(remaining.trim());
+        remaining = "";
+      }
+
+      return { segments, remaining };
     }
 
     async function sendChat(text, options = {}) {
@@ -1213,7 +1410,7 @@
       setFaceState("thinking");
       setStatus("Waiting for RoomAI...");
 
-      const response = await fetch("/chat", {
+      const response = await fetch("/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1222,18 +1419,99 @@
         })
       });
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.detail || "Chat request failed.");
+        let detail = "Chat request failed.";
+        try {
+          const data = await response.json();
+          detail = data.detail || detail;
+        } catch (error) {
+          detail = response.statusText || detail;
+        }
+        throw new Error(detail);
       }
 
-      addBubble("assistant", data.answer);
-      setResponse("assistant", data.answer);
-      setStatus(data.success === false ? "Reply returned with fallback mode." : "Reply received.");
-      openTranscriptIfNeeded();
-      speakReply(data.answer);
+      if (!response.body) {
+        throw new Error("This browser does not support streaming responses.");
+      }
 
-      if (!speakReplies.checked || !("speechSynthesis" in window)) {
+      const assistantBubble = addBubble("assistant", "");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let pendingLines = "";
+      let assistantText = "";
+      let speechBuffer = "";
+      let finalResponse = null;
+      let sawChunk = false;
+      openTranscriptIfNeeded();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        pendingLines += decoder.decode(value, { stream: true });
+        const lines = pendingLines.split("\n");
+        pendingLines = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) {
+            continue;
+          }
+          const event = JSON.parse(line);
+
+          if (event.type === "chunk") {
+            const chunk = event.content || "";
+            if (!chunk) {
+              continue;
+            }
+            sawChunk = true;
+            assistantText += chunk;
+            speechBuffer += chunk;
+            assistantBubble.textContent = assistantText;
+            chatLog.scrollTop = chatLog.scrollHeight;
+            setResponse("assistant", assistantText);
+            setStatus("RoomAI is replying...");
+
+            const extracted = extractSpeakableSegments(speechBuffer);
+            speechBuffer = extracted.remaining;
+            extracted.segments.forEach(enqueueSpeech);
+          } else if (event.type === "done") {
+            finalResponse = event.response;
+          } else if (event.type === "error") {
+            throw new Error(event.detail || "Chat request failed.");
+          }
+        }
+      }
+
+      pendingLines += decoder.decode();
+      if (pendingLines.trim()) {
+        const event = JSON.parse(pendingLines);
+        if (event.type === "done") {
+          finalResponse = event.response;
+        }
+      }
+
+      if (!finalResponse) {
+        throw new Error("RoomAI did not finish the reply.");
+      }
+
+      if (!sawChunk) {
+        assistantText = finalResponse.answer || "";
+        assistantBubble.textContent = assistantText;
+        setResponse("assistant", assistantText);
+        enqueueSpeech(assistantText);
+      } else if (finalResponse.answer && finalResponse.answer.trim() !== assistantText.trim()) {
+        assistantText = finalResponse.answer;
+        assistantBubble.textContent = assistantText;
+        setResponse("assistant", assistantText);
+      }
+
+      const extracted = extractSpeakableSegments(speechBuffer, true);
+      extracted.segments.forEach(enqueueSpeech);
+      setStatus(finalResponse.success === false ? "Reply returned with fallback mode." : "Reply received.");
+
+      if (!speakReplies.checked) {
         setFaceState("idle");
       }
     }
@@ -1245,7 +1523,8 @@
       }
 
       messageInput.value = "";
-      window.speechSynthesis?.cancel();
+      clearSpeechQueue();
+      primeReplyAudio();
 
       try {
         await sendChat(text);
@@ -1286,7 +1565,8 @@
         throw new Error("This browser does not support microphone capture.");
       }
 
-      window.speechSynthesis?.cancel();
+      clearSpeechQueue();
+      primeReplyAudio();
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordedChunks = [];
 
